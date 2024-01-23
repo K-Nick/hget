@@ -16,8 +16,7 @@ class Download(object):
         if outfile:
             self.outfile = os.path.abspath(outfile)
         else:
-            self.outfile = os.path.join(
-                os.getcwd(), os.path.basename(urlparse(self.url).path))
+            self.outfile = os.path.join(os.getcwd(), os.path.basename(urlparse(self.url).path))
         self.outdir = os.path.dirname(self.outfile)
         self.rang_file = self.outfile + ".ht"
         mkdir(self.outdir)
@@ -32,19 +31,19 @@ class Download(object):
         self.tqdm_init = 0
         self.quiet = quiet
         self.extra = remove_empty_items(kwargs)
-        self.max_speed = hs_decode(self.extra.get(
-            "max_speed") or sys.maxsize)
+        self.max_speed = hs_decode(self.extra.get("max_speed") or sys.maxsize)
         self.chunk_size = 100 * Chunk.OneK
         self.ftp = False
         self.startime = int(time.time())
         self.current = current_process()
-        self.rate_limiter = RateLimit(
-            max(int(float(self.max_speed)/self.chunk_size), 1))
+        self.rate_limiter = RateLimit(max(int(float(self.max_speed) / self.chunk_size), 1))
         self.lock = Lock()
         self.cookies = self.extra.pop("cookies", None)
         self.trust_env = self.extra.pop("proxy_env", False)
 
-    async def get_range(self, session=None, size=1000*Chunk.OneK):
+        self.done = False
+
+    async def get_range(self, session=None, size=1000 * Chunk.OneK):
         if os.path.isfile(self.rang_file) and os.path.isfile(self.outfile):
             self.load_offset()
             content_length = 0
@@ -56,39 +55,33 @@ class Download(object):
                 self.range_list.append(rang)
                 content_length = max(content_length, end + 1)
             mn_as, mn_pt = get_as_part(content_length)
-            self.threads = self.threads or min(
-                max_async(), Chunk.MAX_AS, mn_as)
+            self.threads = self.threads or min(max_async(), Chunk.MAX_AS, mn_as)
             self.parts = min(self.parts, mn_pt)
             self.content_length = content_length
-            self.loger.debug("%s of %s has download" %
-                             (self.tqdm_init, self.content_length))
+            self.loger.debug("%s of %s has download" % (self.tqdm_init, self.content_length))
         else:
             req = await self.fetch(session)
             if not isinstance(req, int):
                 if 400 <= req.status < 500:
-                    raise DownloadError(
-                        "Client ERROR %s: %s bad request" % (req.status, self.url))
+                    raise DownloadError("Client ERROR %s: %s bad request" % (req.status, self.url))
                 elif 500 <= req.status:
-                    raise DownloadError(
-                        "Server ERROR %s: %s bad request" % (req.status, self.url))
+                    raise DownloadError("Server ERROR %s: %s bad request" % (req.status, self.url))
                 content_length = int(req.headers['content-length'])
             else:
                 content_length = req
             self.content_length = content_length
             if self.content_length < 1:
                 self.offset = {}
-                self.loger.error(
-                    "Remote file has no content with filesize 0 bytes.")
+                self.loger.error("Remote file has no content with filesize 0 bytes.")
                 sys.exit(1)
             if hasattr(req, "headers") and "accept-ranges" not in req.headers:
-                rang = {'Range': (0, content_length-1)}
-                self.offset[content_length-1] = [0, 0]
+                rang = {'Range': (0, content_length - 1)}
+                self.offset[content_length - 1] = [0, 0]
                 self.range_list.append(rang)
                 self.threads = self.parts = 1
             else:
                 mn_as, mn_pt = get_as_part(content_length)
-                self.threads = self.threads or min(
-                    max_async(), Chunk.MAX_AS, mn_as)
+                self.threads = self.threads or min(max_async(), Chunk.MAX_AS, mn_as)
                 self.parts = min(self.parts, mn_pt)
                 if self.parts:
                     size = content_length // self.parts
@@ -115,31 +108,31 @@ class Download(object):
         _thread.start_new_thread(self._auto_write_offset, ())
 
     async def download(self):
-        self.timeout = ClientTimeout(total=60*60*24, sock_read=2400)
+        self.timeout = ClientTimeout(total=60 * 60 * 24, sock_read=2400)
         ssl = False
         ssl_context = self.extra.pop("ssl_context", None)
         if ssl_context:
             ssl_context.check_hostname = False
             ssl = None
-        self.connector = TCPConnector(
-            limit=self.tcp_conn, ssl_context=ssl_context, ssl=ssl)
-        async with ClientSession(connector=self.connector,
-                                 timeout=self.timeout,
-                                 trust_env=self.trust_env,
-                                 cookies=self.cookies) as session:
+        self.connector = TCPConnector(limit=self.tcp_conn, ssl_context=ssl_context, ssl=ssl)
+        async with ClientSession(connector=self.connector, timeout=self.timeout, trust_env=self.trust_env, cookies=self.cookies) as session:
             await self.get_range(session)
             self._offset_thread()
             self.set_sem(self.threads)
             if os.getenv("RUN_HGET_FIRST") != 'false':
-                self.loger.info("File size: %s (%d bytes)",
-                                human_size(self.content_length), self.content_length)
-                self.loger.info("Starting download %s --> %s",
-                                self.url, self.outfile)
-            self.loger.debug("Ranges: %s, Sem: %s, Connections: %s, %s", self.parts,
-                             self.threads, self.tcp_conn or 100, get_as_part(self.content_length))
-            pos = len(
-                self.current._identity) and self.current._identity[0]-1 or None
-            with tqdm(position=pos, disable=self.quiet, total=int(self.content_length), initial=self.tqdm_init, unit='', ascii=True, unit_scale=True, unit_divisor=1024) as bar:
+                self.loger.info("File size: %s (%d bytes)", human_size(self.content_length), self.content_length)
+                self.loger.info("Starting download %s --> %s", self.url, self.outfile)
+            self.loger.debug("Ranges: %s, Sem: %s, Connections: %s, %s", self.parts, self.threads, self.tcp_conn or 100,
+                             get_as_part(self.content_length))
+            pos = len(self.current._identity) and self.current._identity[0] - 1 or None
+            with tqdm(position=pos,
+                      disable=self.quiet,
+                      total=int(self.content_length),
+                      initial=self.tqdm_init,
+                      unit='',
+                      ascii=True,
+                      unit_scale=True,
+                      unit_divisor=1024) as bar:
                 tasks = []
                 self.rate_limiter.refresh()
                 for h_range in self.range_list:
@@ -147,15 +140,20 @@ class Download(object):
                     if s > e:
                         continue
                     h_range.update(self.headers)
-                    task = self.fetch(
-                        session, pbar=bar, headers=h_range.copy())
+                    task = self.fetch(session, pbar=bar, headers=h_range.copy())
                     tasks.append(task)
                 await asyncio.gather(*tasks)
 
     async def _download_in_executor(self, type_, *args):
-        pos = len(
-            self.current._identity) and self.current._identity[0]-1 or None
-        with tqdm(position=pos, disable=self.quiet, total=int(self.content_length), initial=self.tqdm_init, unit='', ascii=True, unit_scale=True, unit_divisor=1024) as bar:
+        pos = len(self.current._identity) and self.current._identity[0] - 1 or None
+        with tqdm(position=pos,
+                  disable=self.quiet,
+                  total=int(self.content_length),
+                  initial=self.tqdm_init,
+                  unit='',
+                  ascii=True,
+                  unit_scale=True,
+                  unit_divisor=1024) as bar:
             self.rate_limiter.refresh()
             with ThreadPoolExecutor(self.threads) as exector:
                 tasks = []
@@ -163,11 +161,13 @@ class Download(object):
                     s, e = h_range["Range"]
                     if s > e:
                         continue
-                    func = getattr(self, "_download_"+type_)
+                    func = getattr(self, "_download_" + type_)
                     task = self.loop.run_in_executor(
                         exector,
                         func,
-                        s, e, bar,
+                        s,
+                        e,
+                        bar,
                         *args,
                     )
                     tasks.append(task)
@@ -182,22 +182,18 @@ class Download(object):
         self._offset_thread()
         if os.getenv("RUN_HGET_FIRST") != 'false':
             self.loger.info("Logging in as anonymous success")
-            self.loger.info("File size: %s (%d bytes)",
-                            human_size(self.content_length), self.content_length)
-            self.loger.info("Starting download %s --> %s",
-                            self.url, self.outfile)
+            self.loger.info("File size: %s (%d bytes)", human_size(self.content_length), self.content_length)
+            self.loger.info("Starting download %s --> %s", self.url, self.outfile)
         self.threads = min(self.threads, MAX_FTP_CONNECT)
-        self.loger.debug("Ranges: %s, Sem: %s, %s", self.parts,
-                         self.threads, get_as_part(self.content_length))
+        self.loger.debug("Ranges: %s, Sem: %s, %s", self.parts, self.threads, get_as_part(self.content_length))
         await self._download_in_executor("ftp")
 
     def _download_ftp(self, s=0, e=sys.maxsize, pbar=None):
         Range = "bytes=%s-%s" % (s, e)
-        self.loger.debug(
-            "Start %s %s", currentThread().name, Range)
-        s = max(s-1, 0)
+        self.loger.debug("Start %s %s", currentThread().name, Range)
+        s = max(s - 1, 0)
         end = e
-        if e+1 == self.content_length:
+        if e + 1 == self.content_length:
             end += 1
         ftp, filepath = login(self.url, timeout=self.datatimeout)
         try:
@@ -209,15 +205,14 @@ class Download(object):
                         chunk = conn.recv(self.chunk_size)
                         if not chunk:
                             break
-                        if cur+len(chunk) <= end:
+                        if cur + len(chunk) <= end:
                             self.dump_to_file(e, chunk, f, pbar)
                             cur += len(chunk)
                         else:
-                            chunk = chunk[:(end-cur)]
+                            chunk = chunk[:(end - cur)]
                             self.dump_to_file(e, chunk, f, pbar)
                             break
-            self.loger.debug(
-                "Finished %s %s", currentThread().name, Range)
+            self.loger.debug("Finished %s %s", currentThread().name, Range)
         finally:
             ftp.close()
 
@@ -233,27 +228,25 @@ class Download(object):
             async with self.sem:
                 s, e = headers["Range"]
                 headers["Range"] = 'bytes={0}-{1}'.format(s, e)
-                self.loger.debug(
-                    "Start %s %s", asyncio.current_task().get_name(), headers["Range"])
+                self.loger.debug("Start %s %s", asyncio.current_task().get_name(), headers["Range"])
                 proxy, proxy_auth = self.extra.get("proxy"), None
                 if self.extra.get("proxy_user") and self.extra.get("proxy_pass") and self.extra.get("proxy"):
-                    proxy_auth = BasicAuth(self.extra.get(
-                        "proxy_user"), self.extra.get("proxy_pass"))
-                async with session.get(self.url, headers=headers, timeout=self.timeout, params=self.extra, proxy=proxy, proxy_auth=proxy_auth) as req:
+                    proxy_auth = BasicAuth(self.extra.get("proxy_user"), self.extra.get("proxy_pass"))
+                async with session.get(self.url,
+                                       headers=headers,
+                                       timeout=self.timeout,
+                                       params=self.extra,
+                                       proxy=proxy,
+                                       proxy_auth=proxy_auth) as req:
                     with open(self.outfile, 'r+b') as f:
                         f.seek(s, os.SEEK_SET)
                         async for chunk in req.content.iter_chunked(self.chunk_size):
                             if chunk:
                                 self.dump_to_file(e, chunk, f, pbar)
-                self.loger.debug(
-                    "Finished %s %s", asyncio.current_task().get_name(), headers["Range"])
+                self.loger.debug("Finished %s %s", asyncio.current_task().get_name(), headers["Range"])
         else:
             if hasattr(session, "head_object"):
-                content_length = await self.loop.run_in_executor(
-                    None,
-                    self.get_s3_content_length,
-                    session
-                )
+                content_length = await self.loop.run_in_executor(None, self.get_s3_content_length, session)
                 return content_length
             elif hasattr(session, "size"):
                 return session.size(self.filepath)
@@ -265,45 +258,40 @@ class Download(object):
         self.sem = asyncio.Semaphore(n)
 
     async def download_s3(self):
-        aws_access_key_id = self.extra.get('access_key') or os.getenv(
-            "AWS_ACCESS_KEY")
-        aws_secret_access_key = self.extra.get('secrets_key') or os.getenv(
-            'AWS_SECRETS_KEY')
+        aws_access_key_id = self.extra.get('access_key') or os.getenv("AWS_ACCESS_KEY")
+        aws_secret_access_key = self.extra.get('secrets_key') or os.getenv('AWS_SECRETS_KEY')
         if aws_access_key_id and aws_secret_access_key:
-            session = client('s3', aws_access_key_id=aws_access_key_id,
+            session = client('s3',
+                             aws_access_key_id=aws_access_key_id,
                              aws_secret_access_key=aws_secret_access_key,
-                             config=Config(max_pool_connections=MAX_S3_CONNECT+1, connect_timeout=self.datatimeout))
+                             config=Config(max_pool_connections=MAX_S3_CONNECT + 1, connect_timeout=self.datatimeout))
         else:
-            session = client('s3', config=Config(signature_version=UNSIGNED,
-                                                 max_pool_connections=MAX_S3_CONNECT+1, connect_timeout=self.datatimeout))
+            session = client('s3',
+                             config=Config(signature_version=UNSIGNED,
+                                           max_pool_connections=MAX_S3_CONNECT + 1,
+                                           connect_timeout=self.datatimeout))
         u = urlparse(self.url)
         self.bucket, self.key = u.hostname, u.path.lstrip("/")
         await self.get_range(session)
         self._offset_thread()
         if os.getenv("RUN_HGET_FIRST") != 'false':
-            self.loger.info("File size: %s (%d bytes)",
-                            human_size(self.content_length), self.content_length)
-            self.loger.info("Starting download %s --> %s",
-                            self.url, self.outfile)
+            self.loger.info("File size: %s (%d bytes)", human_size(self.content_length), self.content_length)
+            self.loger.info("Starting download %s --> %s", self.url, self.outfile)
         self.threads = min(self.threads, MAX_S3_CONNECT)
-        self.loger.debug("Ranges: %s, Sem: %s, %s", self.parts,
-                         self.threads, get_as_part(self.content_length))
+        self.loger.debug("Ranges: %s, Sem: %s, %s", self.parts, self.threads, get_as_part(self.content_length))
         await self._download_in_executor("s3", session)
         session.close()
 
     def _download_s3(self, s, e, pbar=None, session=None):
         Range = "bytes=%s-%s" % (s, e)
-        self.loger.debug(
-            "Start %s %s", currentThread().name, Range)
-        response = session.get_object(
-            Bucket=self.bucket, Key=self.key, Range=Range)
+        self.loger.debug("Start %s %s", currentThread().name, Range)
+        response = session.get_object(Bucket=self.bucket, Key=self.key, Range=Range)
         with open(self.outfile, 'r+b') as f:
             f.seek(s, os.SEEK_SET)
             for chunk in response["Body"].iter_chunks(self.chunk_size):
                 if chunk:
                     self.dump_to_file(e, chunk, f, pbar)
-        self.loger.debug(
-            "Finished %s %s", currentThread().name, Range)
+        self.loger.debug("Finished %s %s", currentThread().name, Range)
 
     def get_s3_content_length(self, session):
         header = session.head_object(Bucket=self.bucket, Key=self.key)
@@ -328,7 +316,7 @@ class Download(object):
                 self.loop = asyncio.new_event_loop()
                 self.loop.run_until_complete(self.download_s3())
                 self.loop.close()
-            elif os.path.isfile(self.url) and (self.url.endswith(".ht") or os.path.isfile(self.url+".ht")):
+            elif os.path.isfile(self.url) and (self.url.endswith(".ht") or os.path.isfile(self.url + ".ht")):
                 self.read_range_file()
             else:
                 self.loger.error("Only http/https/s3/ftp urls allowed.")
@@ -351,9 +339,13 @@ class Download(object):
         return Done
 
     def _auto_write_offset(self, ivs=10):
-        while True:
+        while not self.done:
             time.sleep(ivs)
             self.write_offset()
+
+        if os.path.isfile(self.rang_file):
+            os.remove(self.rang_file)
+            self.loger.debug("Remove %s", os.path.basename(self.rang_file))
 
     def write_offset(self):
         if len(self.offset):
@@ -363,7 +355,9 @@ class Download(object):
                     fo.write(struct.pack('<Q', len(self.offset)))
                     fo.write(os.urandom(3))
                     for e, s in self.offset.items():
-                        l = [e, ] + s
+                        l = [
+                            e,
+                        ] + s
                         for i in l:
                             fo.write(struct.pack('<Q', int(i)))
                             fo.write(os.urandom(3))
@@ -393,13 +387,13 @@ class Download(object):
 
     def check_offset(self, timeout=30):
         time.sleep(5)
-        while True:
+        while not self.done:
             o = self._get_data
             time.sleep(timeout)
             if o == self._get_data:
                 if len(self.offset):
                     for k, v in self.offset.items():
-                        if sum(v) != k+1:
+                        if sum(v) != k + 1:
                             break
                     else:
                         return
@@ -413,32 +407,26 @@ class Download(object):
 
     def _exit_without_data(self, timeout):
         if os.environ.get("RUN_MAIN") == "true":
-            self.loger.debug(
-                "Any data gets in %s sec, Exit 3", timeout)
+            self.loger.debug("Any data gets in %s sec, Exit 3", timeout)
         else:
-            self.loger.error(
-                "Any data gets in %s sec, Exit 3", timeout)
+            self.loger.error("Any data gets in %s sec, Exit 3", timeout)
         self.write_offset()
         os._exit(3)
 
     def latest_check(self):
         try:
             v = pv.parse(__version__)
-            req = json.loads(urlopen(
-                'https://pypi.org/pypi/{}/json'.format(__package__), timeout=5).read().decode())
+            req = json.loads(urlopen('https://pypi.org/pypi/{}/json'.format(__package__), timeout=5).read().decode())
             info = req['info']
             latest_version = info['version']
             if pv.parse(latest_version) > v:
-                self.loger.warn(
-                    "Latest version '%s==%s' is available, you might need to update from '%s' or '%s'",
-                    __package__, latest_version, info['project_urls']['Homepage'], info["package_url"]
-                )
+                self.loger.warn("Latest version '%s==%s' is available, you might need to update from '%s' or '%s'", __package__,
+                                latest_version, info['project_urls']['Homepage'], info["package_url"])
         except Exception as e:
             self.loger.debug(e)
 
     def read_range_file(self):
-        self.rang_file = self.url.endswith(
-            ".ht") and self.url or self.url+".ht"
+        self.rang_file = self.url.endswith(".ht") and self.url or self.url + ".ht"
         try:
             self.load_offset()
         except:
@@ -446,12 +434,14 @@ class Download(object):
             sys.exit(1)
         done, content_length = 0, 0
         for e, s in self.offset.items():
-            l = [e, ] + s
+            l = [
+                e,
+            ] + s
             done += l[-1]
-            content_length = max(content_length, e+1)
+            content_length = max(content_length, e + 1)
             sys.stdout.write("\t".join(map(str, l)) + "\n")
-        sys.stdout.write("Start time: %s, %s of %s (%.2f%%) finished\n" % (time.strftime(
-            "%F %X", time.localtime(self.startime)), human_size(done), human_size(content_length), float(done)/content_length*100))
+        sys.stdout.write("Start time: %s, %s of %s (%.2f%%) finished\n" % (time.strftime("%F %X", time.localtime(
+            self.startime)), human_size(done), human_size(content_length), float(done) / content_length * 100))
         self.offset.clear()
         sys.exit()
 
@@ -476,14 +466,11 @@ class MultiRequests(Download):
         super(MultiRequests, self).__init__(*args, **kw)
         self.args = args = self.extra.pop("input_args", None)
         self.ca_cert = args.cacert or True
-        self.cert = (
-            args.cacert, args.key) if args.cacert and args.key else None
-        self.proxies = args.proxy and {
-            "http": args.proxy, "https": args.proxy} or {}
+        self.cert = (args.cacert, args.key) if args.cacert and args.key else None
+        self.proxies = args.proxy and {"http": args.proxy, "https": args.proxy} or {}
         self.auth = None
         if args.proxy_user and args.proxy_pass:
-            self.auth = requests.auth.HTTPProxyAuth(
-                args.proxy_user, args.proxy_pass)
+            self.auth = requests.auth.HTTPProxyAuth(args.proxy_user, args.proxy_pass)
         self.request_args = {
             "cookies": self.cookies,
             "verify": self.ca_cert,
@@ -494,7 +481,7 @@ class MultiRequests(Download):
             "allow_redirects": True,
         }
 
-    def get_range(self, size=1000*Chunk.OneK):
+    def get_range(self, size=1000 * Chunk.OneK):
         if os.path.isfile(self.rang_file) and os.path.isfile(self.outfile):
             self.load_offset()
             content_length = 0
@@ -506,53 +493,39 @@ class MultiRequests(Download):
                 self.range_list.append(rang)
                 content_length = max(content_length, end + 1)
             mn_as, mn_pt = get_as_part(content_length)
-            self.threads = self.threads or min(
-                max_async(), Chunk.MAX_AS, mn_as)
+            self.threads = self.threads or min(max_async(), Chunk.MAX_AS, mn_as)
             self.parts = min(self.parts, mn_pt)
             self.content_length = content_length
-            self.loger.debug("%s of %s has download" %
-                             (self.tqdm_init, self.content_length))
+            self.loger.debug("%s of %s has download" % (self.tqdm_init, self.content_length))
         else:
             session = requests.Session()
             session.trust_env = self.trust_env
             try:
-                req = requests.head(
-                    self.url,
-                    headers=self.headers,
-                    **self.request_args
-                )
+                req = requests.head(self.url, headers=self.headers, **self.request_args)
             except requests.exceptions.SSLError as e:
                 if not self.args.cacert:
                     self.request_args["verify"] = False
-                    req = requests.head(
-                        self.url,
-                        headers=self.headers,
-                        **self.request_args
-                    )
+                    req = requests.head(self.url, headers=self.headers, **self.request_args)
                 else:
                     raise e
             if 400 <= req.status_code < 500:
-                raise DownloadError(
-                    "Client ERROR %s: %s bad request" % (req.status_code, self.url))
+                raise DownloadError("Client ERROR %s: %s bad request" % (req.status_code, self.url))
             elif 500 <= req.status_code:
-                raise DownloadError(
-                    "Server ERROR %s: %s bad request" % (req.status_code, self.url))
+                raise DownloadError("Server ERROR %s: %s bad request" % (req.status_code, self.url))
             content_length = int(req.headers['content-length'])
             self.content_length = content_length
             if self.content_length < 1:
                 self.offset = {}
-                self.loger.error(
-                    "Remote file has no content with filesize 0 bytes.")
+                self.loger.error("Remote file has no content with filesize 0 bytes.")
                 sys.exit(1)
             if "accept-ranges" not in req.headers:
-                rang = {'Range': (0, content_length-1)}
-                self.offset[content_length-1] = [0, 0]
+                rang = {'Range': (0, content_length - 1)}
+                self.offset[content_length - 1] = [0, 0]
                 self.range_list.append(rang)
                 self.threads = self.parts = 1
             else:
                 mn_as, mn_pt = get_as_part(content_length)
-                self.threads = self.threads or min(
-                    max_async(), Chunk.MAX_AS, mn_as)
+                self.threads = self.threads or min(max_async(), Chunk.MAX_AS, mn_as)
                 self.parts = min(self.parts, mn_pt)
                 if self.parts:
                     size = content_length // self.parts
@@ -577,37 +550,38 @@ class MultiRequests(Download):
     def fetch(self, span=None, pbar=None):
         h = self.headers.copy()
         if not span:
-            s, e = 0, self.content_length-1
+            s, e = 0, self.content_length - 1
         else:
             s, e = span
         h["Range"] = 'bytes={0}-{1}'.format(s, e)
         session = requests.Session()
         session.trust_env = self.trust_env
-        req = session.get(self.url, headers=h,
-                          stream=True, **self.request_args)
-        self.loger.debug(
-            "Start %s %s", currentThread().name, h["Range"])
+        req = session.get(self.url, headers=h, stream=True, **self.request_args)
+        self.loger.debug("Start %s %s", currentThread().name, h["Range"])
         with open(self.outfile, 'r+b') as f:
             f.seek(s, os.SEEK_SET)
             for chunk in req.iter_content(chunk_size=self.chunk_size):
                 if chunk:
                     self.dump_to_file(e, chunk, f, pbar)
-        self.loger.debug(
-            "Finished %s %s", currentThread().name, h["Range"])
+        self.loger.debug("Finished %s %s", currentThread().name, h["Range"])
 
     def download(self):
         self.get_range()
         self._offset_thread()
         if os.getenv("RUN_HGET_FIRST") != 'false':
-            self.loger.info("File size: %s (%d bytes)",
-                            human_size(self.content_length), self.content_length)
-            self.loger.info("Starting download %s --> %s",
-                            self.url, self.outfile)
+            self.loger.info("File size: %s (%d bytes)", human_size(self.content_length), self.content_length)
+            self.loger.info("Starting download %s --> %s", self.url, self.outfile)
         self.threads = min(self.threads, MAX_REQ_CONNECT)
         self.loger.debug("Ranges: %s, threads: %s", self.parts, self.threads)
-        pos = len(
-            self.current._identity) and self.current._identity[0]-1 or None
-        with tqdm(position=pos, disable=self.quiet, total=int(self.content_length), initial=self.tqdm_init, unit='', ascii=True, unit_scale=True, unit_divisor=1024) as bar:
+        pos = len(self.current._identity) and self.current._identity[0] - 1 or None
+        with tqdm(position=pos,
+                  disable=self.quiet,
+                  total=int(self.content_length),
+                  initial=self.tqdm_init,
+                  unit='',
+                  ascii=True,
+                  unit_scale=True,
+                  unit_divisor=1024) as bar:
             self.rate_limiter.refresh()
             with ThreadPoolExecutor(self.threads) as exector:
                 for h_range in self.range_list:
@@ -623,7 +597,7 @@ class MultiRequests(Download):
         try:
             if self.url.startswith("http"):
                 self.download()
-            elif os.path.isfile(self.url) and (self.url.endswith(".ht") or os.path.isfile(self.url+".ht")):
+            elif os.path.isfile(self.url) and (self.url.endswith(".ht") or os.path.isfile(self.url + ".ht")):
                 self.read_range_file()
             else:
                 self.loger.error("Only http/https/s3/ftp urls allowed.")
@@ -647,15 +621,11 @@ class MultiRequests(Download):
 
 
 def hget(func=Download, url="", outfile="", threads=Chunk.MAX_AS, quiet=False, tcp_conn=None, timeout=30, **kwargs):
-    dn = func(url=url, outfile=outfile,
-              threads=threads, quiet=quiet, tcp_conn=tcp_conn, timeout=timeout,  **kwargs)
+    dn = func(url=url, outfile=outfile, threads=threads, quiet=quiet, tcp_conn=tcp_conn, timeout=timeout, **kwargs)
     es = exitSync(obj=dn)
     es.start()
     res = dn.run()
     if res:
-        if os.path.isfile(dn.rang_file):
-            os.remove(dn.rang_file)
-            dn.loger.debug("Remove %s", os.path.basename(dn.rang_file))
         els = int(time.time()) - dn.startime
         dn.loger.info("Donwload success, time elapse: %s sec", els)
     return res
