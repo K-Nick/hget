@@ -336,6 +336,8 @@ class Download(object):
             raise e
         finally:
             self.write_offset()
+
+        self.done = True 
         return Done
 
     def _auto_write_offset(self, ivs=10):
